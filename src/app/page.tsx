@@ -1,101 +1,298 @@
-import Image from "next/image";
+"use client";
+import React from "react";
+import { ArrowLongRightIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { Spinner } from "./libs/spinner.component";
+import OpenAI from "openai";
+// import { zodResponseFormat } from "openai/helpers/zod";
+// import { z } from "zod";
+
+const client = new OpenAI({
+    apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
+    dangerouslyAllowBrowser: true
+});
+
+const btModel = "ft:gpt-3.5-turbo-0125:personal::AliZC6m5";
+
+interface DiscussionType {
+    bibleTalkTopic: "string";
+    introductoryStatement: "string";
+    icebreakerQuestion: "string";
+    firstScripture: "string";
+    firstQuestion: "string";
+    secondScripture: "string";
+    secondQuestion: "string";
+    lastScripture: "string";
+    lastQuestion: "string";
+    concludingStatement: "string";
+}
+
+// const DiscussionSchema = z.object({
+//     bibleTalkTopic: z.string(),
+//     introductoryStatement: z.string(),
+//     icebreakerQuestion: z.string(),
+//     firstScripture: z.string(),
+//     firstQuestion: z.string(),
+//     secondScripture: z.string(),
+//     secondQuestion: z.string(),
+//     lastScripture: z.string(),
+//     lastQuestion: z.string(),
+//     concludingStatement: z.string()
+// });
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    const [hint, setHint] = React.useState<string>("");
+    const [discussion, setDiscussion] = React.useState<DiscussionType>();
+    const [loading, setLoading] = React.useState<boolean>(false);
+    const [fineTuning, setIsFineTuning] = React.useState<boolean>(false);
+    const [tuningMsg, setTuningMsg] = React.useState<string>("");
+    const [fineTunedModel, setFineTunedModel] = React.useState<string | null>(
+        btModel
+    );
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    const btnDisabled = !hint.length || loading;
+    const btnBackgroundColor = !btnDisabled ? "bg-[#0a0a0a]" : "bg-[#B7B7B7]";
+    const textColor = !btnDisabled ? "text-[#0a0a0a]" : "text-[#B7B7B7]";
+
+    const getBibleTalkNote = React.useCallback(async () => {
+        if (!hint.length || !fineTunedModel) return;
+        try {
+            setLoading(true);
+            const response = await client.chat.completions.create({
+                model: fineTunedModel,
+                messages: [
+                    {
+                        role: "system",
+                        content: `
+                          You are an preacher with the gift of the gab, you prepare weekly bible discussions.
+
+                          RESPONSE FORMAT: 
+                          Generate a JSON object in exactly this shape, it must be a valid JSON: 
+                          {
+                             bibleTalkTopic:  "string", 
+                             introductoryStatement: "string", 
+                             icebreakerQuestion: "string",
+                             firstScripture: "string", 
+                             firstQuestion: "string", 
+                             secondScripture: "string",
+                             secondQuestion: "string",
+                             lastScripture: "string",
+                             lastQuestion: "string", 
+                             concludingStatement: "string"
+                          }
+
+                          important rules: 
+                            1. The introductory statement should include your name.
+                            2. The bible talk topic should be very catchy.
+                            3. The questions should be short and be in relation to the scripture just read and also the topic in discussion. 
+                            4. The questions must all be in-line with the discussion and NOT out of scope, also will be good if the questions are simple.
+                            5. The concludingStatement field should be a witty statement that brings to focus the main points of the discussion, should be at least 300 words.
+
+                          When providing scripture references, please always include both the reference (e.g., John 3:16) and the full scripture text that corresponds to it.
+                        `
+                    },
+                    { role: "user", content: hint }
+                ],
+                response_format: {
+                    type: "json_object"
+                }
+            });
+            if (!response?.choices?.length) throw Error("");
+            const result = JSON.parse(
+                response.choices[0].message.content ?? ""
+            );
+            setDiscussion(result);
+            setHint("");
+        } catch (err) {
+        } finally {
+            setLoading(false);
+        }
+    }, [hint, fineTunedModel, client]);
+
+    const revertToDefaultTuningMsg = React.useCallback(() => {
+        setTimeout(() => {
+            setTuningMsg("");
+            setIsFineTuning(false);
+        }, 500);
+    }, []);
+
+    const createFineTuningJob = async (fileId: string, jobId = "") => {
+        //if there is a job id then I am not creating a job
+        let job: any;
+        if (!jobId) {
+            job = await client.fineTuning.jobs.create({
+                training_file: fileId,
+                model: "gpt-3.5-turbo"
+            });
+            if (!job.id) throw new Error("Failed to fine tune model");
+            setTimeout(() => {
+                setTuningMsg("Fine tuning starting");
+                createFineTuningJob(fileId, job.id);
+            }, 60 * 1000); //check after one minute
+        } else {
+            const tuneInfo = await client.fineTuning.jobs.retrieve(jobId);
+            if (
+                tuneInfo.status === "failed" ||
+                tuneInfo.status === "cancelled"
+            ) {
+                setTuningMsg("Failed");
+                revertToDefaultTuningMsg();
+                throw new Error("Failed to fine tune model");
+            }
+            if (tuneInfo.status !== "succeeded") {
+                setTuningMsg("Fine tuning in progress");
+                setTimeout(() => {
+                    createFineTuningJob(fileId, tuneInfo.id);
+                }, 60 * 1000); //check after one minute
+            } else {
+                setTuningMsg("Done");
+                setFineTunedModel(tuneInfo.fine_tuned_model);
+                revertToDefaultTuningMsg();
+            }
+        }
+    };
+
+    const trainModelWithLocalData = async () => {
+        try {
+            setIsFineTuning(true);
+            setTuningMsg("Fine tuning start...");
+            //create a file in openai
+            const upload = await client.files.create({
+                file: await fetch("http://localhost:3000/bibletalk.jsonl"),
+                purpose: "fine-tune"
+            });
+            if (!upload?.id) {
+                setTuningMsg("Failed");
+                revertToDefaultTuningMsg();
+                throw Error("failed to upload file for fine tuning");
+            }
+            setTuningMsg("Uploaded file");
+
+            //creating a fine tuning job
+            await createFineTuningJob(upload.id);
+        } catch (err) {
+            setTuningMsg("Failed");
+            revertToDefaultTuningMsg();
+            console.error(err);
+        }
+    };
+
+    // const getScriptureLink = (scripture: string) => {
+    //     const splitScripture = scripture.split(" ");
+    //     if (splitScripture[0] && !isNaN(Number(splitScripture[0]))) {
+    //         const bookName = `${
+    //             splitScripture[1][0]
+    //         }${splitScripture[1].substring(1)}`;
+    //         const [chapter, verse] = splitScripture[2].split(":");
+    //         return `https://www.bibleref.com/${splitScripture[0]}-${bookName}/${chapter}/${splitScripture[0]}-${bookName}-${chapter}-${verse}.html`;
+    //     }
+    //     const [c, v] = splitScripture[1].split(":");
+    //     return `https://www.bibleref.com/${splitScripture[0]}/${c}/${splitScripture[0]}-${c}-${v}.html`;
+    // };
+
+    return (
+        <div className="v-screen h-screen flex flex-col items-center justify-center p-8 relative">
+            <button
+                className={`flex justify-center items-center rounded-md w-auto px-8 transition ease-in-out h-10 absolute top-5 right-5 bg-white`}
+                onClick={trainModelWithLocalData}
+            >
+                {fineTuning ? (
+                    <p className="text-black">{tuningMsg}</p>
+                ) : (
+                    <p className="text-black">Fine tune</p>
+                )}
+            </button>
+            <main className="bg-white rounded-md p-16 w-full md:w-8/12 overflow-y-scroll">
+                <p className="text-black mb-8 text-center text-3xl font-semibold">
+                    BibleTalkGPT
+                </p>
+                <section className="relative">
+                    <SparklesIcon
+                        className={`h-5 v-5 absolute left-5 top-4 ${textColor} transition ease-in-out`}
+                    />
+                    <textarea
+                        className="w-full h-40 rounded-lg bg-[#F5F5F7] text-black p-4 pl-12"
+                        placeholder="Drop hints on what kind of bible talk you would like to teach"
+                        value={hint}
+                        onChange={(e) => setHint(e.target.value)}
+                    />
+                    <button
+                        className={`flex justify-center items-center rounded-md w-10 transition ease-in-out h-10 absolute bottom-5 right-5 ${btnBackgroundColor}`}
+                        onClick={getBibleTalkNote}
+                    >
+                        {loading ? (
+                            <Spinner size="small" />
+                        ) : (
+                            <ArrowLongRightIcon className="text-white h-5 w-5" />
+                        )}
+                    </button>
+                </section>
+                {discussion ? (
+                    <section className="mt-16 border p-8 w-full rounded-md text-black space-y-4">
+                        <h1 className="text-2xl">
+                            Bible discussion for today!
+                        </h1>
+                        <div>
+                            <p className="text-xl">Topic</p>
+                            <p className="font-semibold italic text-lg">
+                                {discussion.bibleTalkTopic}
+                            </p>
+                        </div>
+                        <p className="italic">
+                            {discussion.introductoryStatement}
+                        </p>
+                        <div>
+                            <p className="font-medium underline">
+                                Ice breaker question
+                            </p>
+                            <p>{discussion.icebreakerQuestion}</p>
+                        </div>
+                        <div>
+                            <p className="font-medium underline">
+                                First scripture
+                            </p>
+                            <p>{discussion.firstScripture}</p>
+                        </div>
+                        <div className="">
+                            <p className="font-medium underline">
+                                First question
+                            </p>
+                            <p>{discussion.firstQuestion}</p>
+                        </div>
+                        <div>
+                            <p className="font-medium underline">
+                                Second scripture
+                            </p>
+                            <p>{discussion.secondScripture}</p>
+                        </div>
+                        <div className="">
+                            <p className="font-medium underline">
+                                Second question
+                            </p>
+                            <p>{discussion.secondQuestion}</p>
+                        </div>
+
+                        <div className="">
+                            <p className="font-medium underline">
+                                Last scripture
+                            </p>
+                            <p>{discussion.lastScripture}</p>
+                        </div>
+                        <div>
+                            <p className="font-medium underline">
+                                Last question
+                            </p>
+                            <p>{discussion.lastQuestion}</p>
+                        </div>
+
+                        <div>
+                            <p className="font-medium underline">
+                                In conclusion
+                            </p>
+                            <p>{discussion.concludingStatement}</p>
+                        </div>
+                    </section>
+                ) : null}
+            </main>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+    );
 }
