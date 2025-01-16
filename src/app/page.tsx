@@ -1,8 +1,11 @@
 "use client";
 import React from "react";
+import OpenAI from "openai";
 import { ArrowLongRightIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { Spinner } from "./libs/spinner.component";
-import OpenAI from "openai";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// import Image from "next/image";
 // import { zodResponseFormat } from "openai/helpers/zod";
 // import { z } from "zod";
 
@@ -48,6 +51,10 @@ export default function Home() {
     const [fineTunedModel, setFineTunedModel] = React.useState<string | null>(
         btModel
     );
+    const [flyerURL, setFlyerURL] = React.useState<string>("");
+    const [flyerLoading, setFlyerLoading] = React.useState<boolean>(false);
+    const [reloadFlyer, setReloadFlyer] = React.useState<boolean>(false);
+    const [extraFlyerPrompt, setExtraFlyerPrompt] = React.useState<string>("");
 
     const btnDisabled = !hint.length || loading;
     const btnBackgroundColor = !btnDisabled ? "bg-[#0a0a0a]" : "bg-[#B7B7B7]";
@@ -87,11 +94,14 @@ export default function Home() {
                             4. The questions must all be in-line with the discussion and NOT out of scope, also will be good if the questions are simple.
                             5. The concludingStatement field should be a witty statement that brings to focus the main points of the discussion, should be at least 300 words.
 
-                          When providing scripture references, please always include both the reference (e.g., John 3:16) and the full scripture text that corresponds to it.
+                          ALSO IMPORTANT: When providing scripture references, please always include both the reference (e.g., John 3:16) and the full scripture text that corresponds to it!
                         `
                     },
                     { role: "user", content: hint }
                 ],
+                temperature: 1, //default 1
+                presence_penalty: 0.2, // default 0
+                frequency_penalty: 0, // default 0
                 response_format: {
                     type: "json_object"
                 }
@@ -189,6 +199,41 @@ export default function Home() {
     //     return `https://www.bibleref.com/${splitScripture[0]}/${c}/${splitScripture[0]}-${c}-${v}.html`;
     // };
 
+    React.useEffect(() => {
+        (async () => {
+            if (discussion) {
+                const topic = discussion.bibleTalkTopic;
+                const prompt = `
+               Design a full-frame 2D invitation poster that I can post on my social media status with no background or borders, shadows, orientation, tilts or backdrop where the poster design covers the entire image from edge to edge. The flyer should have no empty or colored space around it, no frame and no additional objects or context---Just the poster design filling the entire canvas. In addition, The following rules must be adhered to: 
+               1. The design should boldly state the topic ${topic}. 
+               2. At the bottom of the design, it should display the venue of the discussion is "KFC, Ikeja ICM"
+               3. Below the venue should be the time it starts which is "7pm on Friday". 
+               4. The poster image should fill the whole canvas from edge to edge with no visible space. 
+               5. crop out any background and just leave the image itself
+
+               ${extraFlyerPrompt}
+          `;
+                try {
+                    setFlyerLoading(true);
+                    const response = await client.images.generate({
+                        model: "dall-e-3",
+                        prompt,
+                        n: 1,
+                        size: "1024x1024",
+                        response_format: "url"
+                    });
+                    if (!response) throw Error("Couldn't generate flyer");
+
+                    setFlyerURL(response.data[0].url ?? "");
+                } catch (err) {
+                    console.error("IMAGE ERROR ==>", err);
+                } finally {
+                    setFlyerLoading(false);
+                }
+            }
+        })();
+    }, [discussion, reloadFlyer, extraFlyerPrompt]);
+
     return (
         <div className="v-screen h-screen flex flex-col items-center justify-center p-8 relative">
             <button
@@ -231,6 +276,19 @@ export default function Home() {
                         <h1 className="text-2xl">
                             Bible discussion for today!
                         </h1>
+                        <div className="my-8 w-full flex md:justify-center">
+                            {flyerLoading ? (
+                                <Skeleton className="w-4/6 h-96 rounded-lg" />
+                            ) : flyerURL && !flyerLoading ? (
+                                <div className="w-full md:w-2/6 h-96 bg-contain">
+                                    <img
+                                        src={flyerURL}
+                                        alt="Flyer for bible discussion"
+                                        className="w-full h-96"
+                                    />
+                                </div>
+                            ) : null}
+                        </div>
                         <div>
                             <p className="text-xl">Topic</p>
                             <p className="font-semibold italic text-lg">
@@ -270,7 +328,6 @@ export default function Home() {
                             </p>
                             <p>{discussion.secondQuestion}</p>
                         </div>
-
                         <div className="">
                             <p className="font-medium underline">
                                 Last scripture
