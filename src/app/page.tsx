@@ -4,7 +4,15 @@ import OpenAI from "openai";
 import { ArrowLongRightIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { Spinner } from "./libs/spinner.component";
 import { Skeleton } from "@/components/ui/skeleton";
-
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger
+} from "@/components/ui/dialog";
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 // import Image from "next/image";
 // import { zodResponseFormat } from "openai/helpers/zod";
 // import { z } from "zod";
@@ -220,11 +228,11 @@ export default function Home() {
                         prompt,
                         n: 1,
                         size: "1024x1024",
-                        response_format: "url"
+                        response_format: "b64_json" //url
                     });
                     if (!response) throw Error("Couldn't generate flyer");
 
-                    setFlyerURL(response.data[0].url ?? "");
+                    setFlyerURL(response.data[0].b64_json ?? "");
                 } catch (err) {
                     console.error("IMAGE ERROR ==>", err);
                 } finally {
@@ -233,6 +241,8 @@ export default function Home() {
             }
         })();
     }, [discussion, reloadFlyer, extraFlyerPrompt]);
+
+    const flyerSRC = `data:image/png;base64,${flyerURL}`;
 
     return (
         <div className="v-screen h-screen flex flex-col items-center justify-center p-8 relative">
@@ -280,13 +290,30 @@ export default function Home() {
                             {flyerLoading ? (
                                 <Skeleton className="w-4/6 h-96 rounded-lg" />
                             ) : flyerURL && !flyerLoading ? (
-                                <div className="w-full md:w-2/6 h-96 bg-contain">
-                                    <img
-                                        src={flyerURL}
-                                        alt="Flyer for bible discussion"
-                                        className="w-full h-96"
-                                    />
-                                </div>
+                                <Dialog>
+                                    <DialogTrigger className="w-full md:w-2/6 h-96 ">
+                                        <div className="bg-contain">
+                                            <img
+                                                src={flyerSRC}
+                                                alt="Flyer for bible discussion"
+                                                className="w-full h-96 cursor-zoom-in"
+                                            />
+                                        </div>
+                                    </DialogTrigger>
+                                    <DialogContent className="v-screen h-screen">
+                                        <VisuallyHidden.Root>
+                                            <DialogHeader>
+                                                <DialogTitle />
+                                                <DialogDescription />
+                                            </DialogHeader>
+                                        </VisuallyHidden.Root>
+                                        <img
+                                            src={flyerSRC}
+                                            alt="Flyer for bible discussion"
+                                            className="w-full h-full"
+                                        />
+                                    </DialogContent>
+                                </Dialog>
                             ) : null}
                         </div>
                         <div>
