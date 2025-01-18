@@ -13,6 +13,9 @@ import {
     DialogTrigger
 } from "@/components/ui/dialog";
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
+import { useToast } from "@/components/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
+
 // import Image from "next/image";
 // import { zodResponseFormat } from "openai/helpers/zod";
 // import { z } from "zod";
@@ -50,6 +53,24 @@ interface DiscussionType {
 //     concludingStatement: z.string()
 // });
 
+type MaliciousCategoryKeyType = keyof OpenAI.Moderations.Moderation.Categories;
+
+const maliciousHintCategory = (
+    categories?: OpenAI.Moderations.Moderation.Categories
+): string => {
+    if (!categories) return "";
+    let message = "Hint appears to be suggestive of ";
+    Object.keys(categories).forEach((key) => {
+        if (categories[key as MaliciousCategoryKeyType]) {
+            message += `${key}, `;
+        }
+    });
+    return message.replace(
+        /,\s+$/,
+        " etc. Please contact support if you need more clarifications"
+    );
+};
+
 export default function Home() {
     const [hint, setHint] = React.useState<string>("");
     const [discussion, setDiscussion] = React.useState<DiscussionType>();
@@ -68,10 +89,29 @@ export default function Home() {
     const btnBackgroundColor = !btnDisabled ? "bg-[#0a0a0a]" : "bg-[#B7B7B7]";
     const textColor = !btnDisabled ? "text-[#0a0a0a]" : "text-[#B7B7B7]";
 
+    const { toast } = useToast();
+
     const getBibleTalkNote = React.useCallback(async () => {
         if (!hint.length || !fineTunedModel) return;
         try {
             setLoading(true);
+            const {
+                flagged: isHintSinister,
+                categories
+            } = await possiblySinisterHint(hint);
+            if (isHintSinister) {
+                return toast({
+                    title: "Malicious hint",
+                    description: `Your hint doesn't align with our policy, ${maliciousHintCategory(
+                        categories
+                    )}`,
+                    action: (
+                        <ToastAction altText="Goto schedule to undo">
+                            close
+                        </ToastAction>
+                    )
+                });
+            }
             const response = await client.chat.completions.create({
                 model: fineTunedModel,
                 messages: [
@@ -125,6 +165,33 @@ export default function Home() {
             setLoading(false);
         }
     }, [hint, fineTunedModel, client]);
+
+    /** check that the user hint isn't anything sinister */
+    const possiblySinisterHint = React.useCallback(
+        async (
+            hint: string
+        ): Promise<{
+            flagged: boolean;
+            categories?: OpenAI.Moderations.Moderation.Categories;
+        }> => {
+            try {
+                const moderation = await client.moderations.create({
+                    model: "omni-moderation-latest",
+                    input: hint
+                });
+                if (!moderation)
+                    throw new Error("Couldn't get moderation results"); //fallback to internal check
+                const modResult = moderation.results[0];
+                const categories = modResult.categories;
+                console.log("result ==>", modResult);
+                console.log("categories ==>", categories);
+                return { flagged: modResult.flagged, categories };
+            } catch (err) {
+                return { flagged: false };
+            }
+        },
+        []
+    );
 
     const revertToDefaultTuningMsg = React.useCallback(() => {
         setTimeout(() => {
@@ -212,7 +279,7 @@ export default function Home() {
             if (discussion) {
                 const topic = discussion.bibleTalkTopic;
                 const prompt = `
-               Design a full-frame 2D invitation poster that I can post on my social media status with no background or borders, shadows, orientation, tilts or backdrop where the poster design covers the entire image from edge to edge. The flyer should have no empty or colored space around it, no frame and no additional objects or context---Just the poster design filling the entire canvas. In addition, The following rules must be adhered to: 
+               Design a Minimalistic simple full-frame 2D invitation poster that I can post on my social media status with no background or borders, shadows, orientation, tilts or backdrop where the poster design covers the entire image from edge to edge. The flyer should have no empty or colored space around it, no frame and no additional objects or context---Just the poster design filling the entire canvas. In addition, The following rules must be adhered to: 
                1. The design should boldly state the topic ${topic}. 
                2. At the bottom of the design, it should display the venue of the discussion is "KFC, Ikeja ICM"
                3. Below the venue should be the time it starts which is "7pm on Friday". 
