@@ -1,0 +1,9 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "openai-api-worker",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-01-09",
+	"observability": {
+		"enabled": true
+	}
+}
