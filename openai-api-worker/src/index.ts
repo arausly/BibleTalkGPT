@@ -11,7 +11,7 @@ const corsHeaders = {
 const createdResponseWithCorsHeaders = (body?: BodyInit) => new Response(body, { headers: corsHeaders });
 
 export default {
-	async fetch(request, env, ctx): Promise<Response> {
+	async fetch(request: Request, env: Env): Promise<Response> {
 		if (request.method === 'OPTIONS') {
 			//preflight
 			return createdResponseWithCorsHeaders();
@@ -19,6 +19,7 @@ export default {
 
 		const client = new OpenAI({
 			apiKey: env.OPENAI_API_KEY,
+			baseURL: 'https://gateway.ai.cloudflare.com/v1/5f7c0a159dc6cc2b73e0e00e9036b9a2/bibletalk-asssitant/openai',
 		});
 		const url = new URL(request.url);
 		const isPostRequest = request.method === 'POST';
@@ -31,6 +32,7 @@ export default {
 					input: hint,
 				});
 				if (!moderation) throw Error(); //fallback to internal check
+				console.log('moderation ==>', moderation);
 				const modResult = moderation.results[0];
 				const categories = modResult.categories;
 				return createdResponseWithCorsHeaders(JSON.stringify({ flagged: modResult.flagged, categories }));
@@ -122,4 +124,5 @@ export default {
 
 		return createdResponseWithCorsHeaders('');
 	},
+	//@ts-ignore
 } satisfies ExportedHandler<Env>;
